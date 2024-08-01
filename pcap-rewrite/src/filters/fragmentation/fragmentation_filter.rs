@@ -25,6 +25,8 @@ use crate::filters::key_parser_ipv6;
 
 use super::convert_fn;
 
+// TODO: change container type to "Key" storage and "Key wo transport" storage
+
 /// Function to convert TwoTupleProtoIpid/FiveTuple data to key container
 pub type ConvertFn<Container> = fn(&HashSet<TwoTupleProtoIpidFiveTuple>) -> Container;
 /// Function to extract key from data
