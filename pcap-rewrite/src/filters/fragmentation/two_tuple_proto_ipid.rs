@@ -1,6 +1,5 @@
 use std::fmt;
-use std::net::{IpAddr, Ipv4Addr};
-use pnet_packet::ip::IpNextHeaderProtocol;
+use std::net::IpAddr;
 
 /// Network 2-tuple (src/dst IP address) + IP protocol + IP ID
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
