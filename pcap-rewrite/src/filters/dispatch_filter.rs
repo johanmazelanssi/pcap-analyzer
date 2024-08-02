@@ -19,7 +19,7 @@ use crate::filters::filtering_action::FilteringAction;
 use crate::filters::filtering_key::FilteringKey;
 use crate::filters::fragmentation::two_tuple_proto_ipid::TwoTupleProtoIpid;
 use crate::filters::ipaddr_pair::IpAddrPair;
-use crate::filters::key::Key;
+use crate::filters::key_ip_transport::KeyIpTransport;
 use crate::filters::key_parser_ipv4;
 use crate::filters::key_parser_ipv6;
 
@@ -167,12 +167,9 @@ impl DispatchFilterBuilder {
                     FilteringAction::Keep => Box::new(|c, ipaddr_pair| {
                         Ok(c.contains(&ipaddr_pair.0) || c.contains(&ipaddr_pair.1))
                     }),
-                    FilteringAction::Drop => {
-                        Box::new(|c, ipaddr_pair| {
-                            Ok(!c.contains(&ipaddr_pair.0)
-                                && !c.contains(&ipaddr_pair.1))
-                        })
-                    }
+                    FilteringAction::Drop => Box::new(|c, ipaddr_pair| {
+                        Ok(!c.contains(&ipaddr_pair.0) && !c.contains(&ipaddr_pair.1))
+                    }),
                 };
 
                 Ok(Box::new(DispatchFilter::new(
@@ -187,15 +184,17 @@ impl DispatchFilterBuilder {
                     IpAddrProtoPortC::of_file_path(Path::new(key_file_path))
                         .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
-                let keep: KeepFn<IpAddrProtoPortC, Key<IpAddrProtoIpid, IpAddrProtoPort>> =
-                    match filtering_action {
-                        FilteringAction::Keep => Box::new(|c, key| {
-                            Ok(c.contains(key.get_key_transport_option().as_ref().unwrap()))
-                        }),
-                        FilteringAction::Drop => Box::new(|c, key| {
-                            Ok(!c.contains(key.get_key_transport_option().as_ref().unwrap()))
-                        }),
-                    };
+                let keep: KeepFn<
+                    IpAddrProtoPortC,
+                    KeyIpTransport<IpAddrProtoIpid, IpAddrProtoPort>,
+                > = match filtering_action {
+                    FilteringAction::Keep => Box::new(|c, key| {
+                        Ok(c.contains(key.get_key_transport_option().as_ref().unwrap()))
+                    }),
+                    FilteringAction::Drop => Box::new(|c, key| {
+                        Ok(!c.contains(key.get_key_transport_option().as_ref().unwrap()))
+                    }),
+                };
 
                 Ok(Box::new(DispatchFilter::new(
                     ipaddr_proto_port_container,
@@ -208,7 +207,7 @@ impl DispatchFilterBuilder {
                 let five_tuple_container = FiveTupleC::of_file_path(Path::new(key_file_path))
                     .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
-                let keep: KeepFn<FiveTupleC, Key<TwoTupleProtoIpid, FiveTuple>> =
+                let keep: KeepFn<FiveTupleC, KeyIpTransport<TwoTupleProtoIpid, FiveTuple>> =
                     match filtering_action {
                         FilteringAction::Keep => Box::new(|c, key| {
                             Ok(c.contains(key.get_key_transport_option().as_ref().unwrap()))

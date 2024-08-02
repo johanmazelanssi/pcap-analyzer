@@ -12,9 +12,8 @@ use libpcap_tools::{Error, FiveTuple, ParseContext};
 use crate::container::ipaddr_proto_ipid_container::IpAddrProtoIpid;
 use crate::container::ipaddr_proto_port_container::IpAddrProtoPort;
 use crate::filters::fragmentation::two_tuple_proto_ipid::TwoTupleProtoIpid;
-use crate::filters::fragmentation::two_tuple_proto_ipid_five_tuple::TwoTupleProtoIpidFiveTuple;
+use crate::filters::key_ip_transport::KeyIpTransport;
 use crate::filters::ipaddr_pair::IpAddrPair;
-use crate::filters::key::Key;
 
 pub fn parse_src_ipaddr(ctx: &ParseContext, payload: &[u8]) -> Result<IpAddr, Error> {
     let ipv4 = Ipv4Packet::new(payload).ok_or_else(|| {
@@ -54,7 +53,7 @@ pub fn parse_src_dst_ipaddr(ctx: &ParseContext, payload: &[u8]) -> Result<IpAddr
 pub fn parse_src_ipaddr_proto_dst_port(
     ctx: &ParseContext,
     payload: &[u8],
-) -> Result<Key<IpAddrProtoIpid, IpAddrProtoPort>, Error> {
+) -> Result<KeyIpTransport<IpAddrProtoIpid, IpAddrProtoPort>, Error> {
     let ipv4_packet = Ipv4Packet::new(payload).ok_or_else(|| {
         warn!(
             "Expected Ipv4 packet but could not parse at index {}",
@@ -78,7 +77,7 @@ pub fn parse_src_ipaddr_proto_dst_port(
                 match TcpPacket::new(ipv4_payload) {
                     Some(ref tcp) => {
                         let dst_port = tcp.get_destination();
-                        let key = Key::new(
+                        let key = KeyIpTransport::new(
                             ipddr_proto_ipid,
                             Some(IpAddrProtoPort::new(
                                 src_ipaddr,
@@ -99,7 +98,7 @@ pub fn parse_src_ipaddr_proto_dst_port(
                     }
                 }
             } else {
-                let key = Key::new(ipddr_proto_ipid, None);
+                let key = KeyIpTransport::new(ipddr_proto_ipid, None);
                 Ok(key)
             }
         }
@@ -109,7 +108,7 @@ pub fn parse_src_ipaddr_proto_dst_port(
                 match UdpPacket::new(ipv4_packet.payload()) {
                     Some(ref udp) => {
                         let dst_port = udp.get_destination();
-                        let key = Key::new(
+                        let key = KeyIpTransport::new(
                             ipddr_proto_ipid,
                             Some(IpAddrProtoPort::new(
                                 src_ipaddr,
@@ -130,18 +129,21 @@ pub fn parse_src_ipaddr_proto_dst_port(
                     }
                 }
             } else {
-                let key = Key::new(ipddr_proto_ipid, None);
+                let key = KeyIpTransport::new(ipddr_proto_ipid, None);
                 Ok(key)
             }
         }
-        _ => Ok(Key::new(
-            ipddr_proto_ipid,
-            Some(IpAddrProtoPort::new(
-                src_ipaddr,
-                ipv4_packet.get_next_level_protocol(),
-                0,
-            )),
-        )),
+        _ => {
+            let key_ip_transport = KeyIpTransport::new(
+                ipddr_proto_ipid,
+                Some(IpAddrProtoPort::new(
+                    src_ipaddr,
+                    ipv4_packet.get_next_level_protocol(),
+                    0,
+                )),
+            );
+            Ok(key_ip_transport)
+        }
     }
 }
 
@@ -166,7 +168,7 @@ pub fn parse_src_ipaddr_proto_dst_port(
 pub fn parse_two_tuple_proto_ipid_five_tuple(
     ctx: &ParseContext,
     payload: &[u8],
-) -> Result<Key<TwoTupleProtoIpid, FiveTuple>, Error> {
+) -> Result<KeyIpTransport<TwoTupleProtoIpid, FiveTuple>, Error> {
     let ipv4_packet =
         Ipv4Packet::new(payload).ok_or(Error::Pnet("Expected Ipv4 packet but could not parse"))?;
 
@@ -188,7 +190,7 @@ pub fn parse_two_tuple_proto_ipid_five_tuple(
                     Some(ref tcp) => {
                         let src_port = tcp.get_source();
                         let dst_port = tcp.get_destination();
-                        Ok(Key::new(
+                        Ok(KeyIpTransport::new(
                             two_tuple_proto_ipid,
                             Some(FiveTuple {
                                 src: src_ipaddr,
@@ -204,7 +206,7 @@ pub fn parse_two_tuple_proto_ipid_five_tuple(
                     )),
                 }
             } else {
-                let key = Key::new(two_tuple_proto_ipid, None);
+                let key = KeyIpTransport::new(two_tuple_proto_ipid, None);
                 Ok(key)
             }
         }
@@ -215,7 +217,7 @@ pub fn parse_two_tuple_proto_ipid_five_tuple(
                     Some(ref udp) => {
                         let src_port = udp.get_source();
                         let dst_port = udp.get_destination();
-                        Ok(Key::new(
+                        Ok(KeyIpTransport::new(
                             two_tuple_proto_ipid,
                             Some(FiveTuple {
                                 src: src_ipaddr,
@@ -231,12 +233,12 @@ pub fn parse_two_tuple_proto_ipid_five_tuple(
                     )),
                 }
             } else {
-                let key = Key::new(two_tuple_proto_ipid, None);
+                let key = KeyIpTransport::new(two_tuple_proto_ipid, None);
                 Ok(key)
             }
         }
         _ => {
-            let key = Key::new(
+            let key = KeyIpTransport::new(
                 two_tuple_proto_ipid,
                 Some(FiveTuple {
                     src: src_ipaddr,
@@ -249,109 +251,4 @@ pub fn parse_two_tuple_proto_ipid_five_tuple(
             Ok(key)
         }
     }
-}
-
-pub fn parse_two_tuple_proto_ipid____DEPRECATED(
-    ctx: &ParseContext,
-    payload: &[u8],
-) -> Result<TwoTupleProtoIpid, Error> {
-    let ipv4_packet = Ipv4Packet::new(payload).ok_or_else(|| {
-        warn!(
-            "Expected Ipv4 packet but could not parse at index {}",
-            ctx.pcap_index
-        );
-        Error::Pnet("Expected Ipv4 packet but could not parse")
-    })?;
-    let src_ipaddr = IpAddr::V4(ipv4_packet.get_source());
-    let dst_ipaddr = IpAddr::V4(ipv4_packet.get_destination());
-    let proto = ipv4_packet.get_next_level_protocol().0;
-    let ip_id = ipv4_packet.get_identification() as u32;
-    Ok(TwoTupleProtoIpid::new(src_ipaddr, dst_ipaddr, proto, ip_id))
-}
-
-pub fn parse_five_tuple____DEPRECATED(
-    ctx: &ParseContext,
-    payload: &[u8],
-) -> Result<FiveTuple, Error> {
-    let ipv4_packet = Ipv4Packet::new(payload).ok_or_else(|| {
-        warn!(
-            "Expected Ipv4 packet but could not parse at index {}",
-            ctx.pcap_index
-        );
-        Error::Pnet("Expected Ipv4 packet but could not parse")
-    })?;
-
-    let src_ipaddr = IpAddr::V4(ipv4_packet.get_source());
-    let dst_ipaddr = IpAddr::V4(ipv4_packet.get_destination());
-
-    match ipv4_packet.get_next_level_protocol() {
-        IpNextHeaderProtocols::Tcp => {
-            let ipv4_payload = libpcap_analyzer::extract_payload_l3_ipv4(ctx, &ipv4_packet)?;
-            match TcpPacket::new(ipv4_payload) {
-                Some(ref tcp) => {
-                    let src_port = tcp.get_source();
-                    let dst_port = tcp.get_destination();
-                    Ok(FiveTuple {
-                        src: src_ipaddr,
-                        dst: dst_ipaddr,
-                        proto: 6_u8,
-                        src_port,
-                        dst_port,
-                    })
-                }
-                None => {
-                    warn!(
-                        "Expected TCP packet in Ipv4 but could not parse at index {}",
-                        ctx.pcap_index
-                    );
-                    Err(Error::Pnet(
-                        "Expected TCP packet in Ipv4 but could not parse",
-                    ))
-                }
-            }
-        }
-        IpNextHeaderProtocols::Udp => {
-            let ipv4_payload = libpcap_analyzer::extract_payload_l3_ipv4(ctx, &ipv4_packet)?;
-            match UdpPacket::new(ipv4_payload) {
-                Some(ref udp) => {
-                    let src_port = udp.get_source();
-                    let dst_port = udp.get_destination();
-                    Ok(FiveTuple {
-                        src: src_ipaddr,
-                        dst: dst_ipaddr,
-                        proto: 17_u8,
-                        src_port,
-                        dst_port,
-                    })
-                }
-                None => {
-                    warn!(
-                        "Expected UDP packet in Ipv4 but could not parse at index {}",
-                        ctx.pcap_index
-                    );
-                    Err(Error::Pnet(
-                        "Expected UDP packet in Ipv4 but could not parse",
-                    ))
-                }
-            }
-        }
-        _ => Ok(FiveTuple {
-            src: src_ipaddr,
-            dst: dst_ipaddr,
-            proto: ipv4_packet.get_next_level_protocol().0,
-            src_port: 0,
-            dst_port: 0,
-        }),
-    }
-}
-
-pub fn parse_two_tuple_proto_ipid_five_tuple____DEPRECATED(
-    ctx: &ParseContext,
-    payload: &[u8],
-) -> Result<TwoTupleProtoIpidFiveTuple, Error> {
-    let two_tuple_proto_ipid = parse_two_tuple_proto_ipid____DEPRECATED(ctx, payload)?;
-    let five_tuple = parse_five_tuple____DEPRECATED(ctx, payload)?;
-    let two_tuple_proto_ipid_five_tuple =
-        TwoTupleProtoIpidFiveTuple::new(Some(two_tuple_proto_ipid), Some(five_tuple));
-    Ok(two_tuple_proto_ipid_five_tuple)
 }

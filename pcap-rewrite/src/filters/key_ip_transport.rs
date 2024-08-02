@@ -1,15 +1,15 @@
-#[derive(Debug)]
-pub struct Key<KeyIp, KeyTransport> {
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub struct KeyIpTransport<KeyIp, KeyTransport> {
     key_ip: KeyIp,
     key_transport_option: Option<KeyTransport>,
 }
 
-impl<KeyIp, KeyTransport> Key<KeyIp, KeyTransport> {
+impl<KeyIp, KeyTransport> KeyIpTransport<KeyIp, KeyTransport> {
     pub fn new(
         key_ip: KeyIp,
         key_transport_option: Option<KeyTransport>,
-    ) -> Key<KeyIp, KeyTransport> {
-        Key {
+    ) -> KeyIpTransport<KeyIp, KeyTransport> {
+        KeyIpTransport {
             key_ip,
             key_transport_option,
         }
@@ -24,8 +24,8 @@ impl<KeyIp, KeyTransport> Key<KeyIp, KeyTransport> {
     }
 }
 
-impl<KeyTransport> Key<(), KeyTransport> {
-    pub fn new_transport(key_transport: KeyTransport) -> Key<(), KeyTransport> {
-        Key::new((), Some(key_transport))
+impl<KeyTransport> KeyIpTransport<(), KeyTransport> {
+    pub fn new_transport(key_transport: KeyTransport) -> KeyIpTransport<(), KeyTransport> {
+        KeyIpTransport::new((), Some(key_transport))
     }
 }
