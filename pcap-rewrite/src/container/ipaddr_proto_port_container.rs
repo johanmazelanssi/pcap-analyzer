@@ -8,7 +8,7 @@ use std::str::FromStr;
 use csv::ReaderBuilder;
 use pnet_packet::ip::IpNextHeaderProtocol;
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct IpAddrProtoPort {
     ipaddr: IpAddr,
     proto: IpNextHeaderProtocol,
@@ -25,8 +25,10 @@ impl IpAddrProtoPort {
     }
 }
 
+// TODO: remove pub later
+#[derive(Debug)]
 pub struct IpAddrProtoPortC {
-    s: HashSet<IpAddrProtoPort>,
+    pub s: HashSet<IpAddrProtoPort>,
 }
 
 impl IpAddrProtoPortC {

@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use crate::filters::fragmentation::two_tuple_proto_ipid::TwoTupleProtoIpid;
 
+#[derive(Debug)]
 pub struct TwoTupleProtoIpidC {
     s0: HashSet<TwoTupleProtoIpid>,
     s1: HashSet<TwoTupleProtoIpid>,

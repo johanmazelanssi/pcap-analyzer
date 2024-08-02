@@ -1,4 +1,6 @@
 use std::collections::HashSet;
+use std::fmt::Debug;
+use std::hash::Hash;
 use std::io;
 use std::net::IpAddr;
 
@@ -6,10 +8,13 @@ use log::warn;
 use pcap_parser::data::PacketData;
 use pnet_packet::ethernet::{EtherType, EtherTypes};
 
+use libpcap_tools::FiveTuple;
 use libpcap_tools::{Error, Packet, ParseContext};
 
 use crate::container::five_tuple_container::FiveTupleC;
 use crate::container::ipaddr_container::IpAddrC;
+use crate::container::ipaddr_proto_ipid_container::IpAddrProtoIpid;
+use crate::container::ipaddr_proto_ipid_container::IpAddrProtoIpidC;
 use crate::container::ipaddr_proto_port_container::{IpAddrProtoPort, IpAddrProtoPortC};
 use crate::container::two_tuple_proto_ipid_container::TwoTupleProtoIpidC;
 use crate::filters::filter::Filter;
@@ -18,14 +23,17 @@ use crate::filters::filter_utils;
 use crate::filters::filtering_action::FilteringAction;
 use crate::filters::filtering_key::FilteringKey;
 use crate::filters::fragmentation::fragmentation_test;
+use crate::filters::fragmentation::two_tuple_proto_ipid::TwoTupleProtoIpid;
 use crate::filters::fragmentation::two_tuple_proto_ipid_five_tuple::TwoTupleProtoIpidFiveTuple;
 use crate::filters::ipaddr_pair::IpAddrPair;
+use crate::filters::key::Key;
 use crate::filters::key_parser_ipv4;
 use crate::filters::key_parser_ipv6;
 
-use super::convert_fn;
+// use crate::filters::key::{IpAddrProtoIpid, IpaddrProtoPort, Key};
+// use crate::filters::key::IpAddrProtoIpid;
 
-// TODO: change container type to "Key" storage and "Key wo transport" storage
+use super::{convert_fn, two_tuple_proto_ipid_five_tuple};
 
 /// Function to convert TwoTupleProtoIpid/FiveTuple data to key container
 pub type ConvertFn<Container> = fn(&HashSet<TwoTupleProtoIpidFiveTuple>) -> Container;
@@ -44,15 +52,15 @@ pub struct FragmentationFilter<Container, Key> {
     keep: KeepFn<Container, Key>,
 }
 
-impl<Container, Key> FragmentationFilter<Container, Key> {
+impl<Container: Debug, Data: Debug> FragmentationFilter<Container, Data> {
     pub fn new(
         data_hs: HashSet<TwoTupleProtoIpidFiveTuple>,
         convert_data_hs_c: ConvertFn<Container>,
         key_container: Container,
 
-        get_key_from_ipv4_l3_data: GetKeyFn<Key>,
-        get_key_from_ipv6_l3_data: GetKeyFn<Key>,
-        keep: KeepFn<Container, Key>,
+        get_key_from_ipv4_l3_data: GetKeyFn<Data>,
+        get_key_from_ipv6_l3_data: GetKeyFn<Data>,
+        keep: KeepFn<Container, Data>,
     ) -> Self {
         FragmentationFilter {
             data_hs,
@@ -111,7 +119,7 @@ impl<Container, Key> FragmentationFilter<Container, Key> {
         };
 
         if is_first_fragment {
-            let data_option: Option<TwoTupleProtoIpidFiveTuple> = match packet.data {
+            let data_option: Option<Key<TwoTupleProtoIpid, FiveTuple>> = match packet.data {
                 PacketData::L2(data) => {
                     if data.len() < 14 {
                         warn!("L2 data too small for ethernet at index {}", ctx.pcap_index);
@@ -152,9 +160,15 @@ impl<Container, Key> FragmentationFilter<Container, Key> {
 
             match data_option {
                 None => Err(Error::DataParser(
-                    "Could find a first IP fragment but could not find two tuple/proto/IP id",
+                    "Could find a first IP fragment but could not two tuple/proto/IP id",
                 ))?,
-                Some(data) => self.data_hs.insert(data),
+                Some(key) => {
+                    let two_tuple_proto_ipid_five_tuple = TwoTupleProtoIpidFiveTuple::new(
+                        Some((*key.get_key_ip()).clone()),
+                        (*key.get_key_transport_option()).clone(),
+                    );
+                    self.data_hs.insert(two_tuple_proto_ipid_five_tuple)
+                }
             };
         }
         Ok(())
@@ -165,6 +179,11 @@ impl<Container, Key> FragmentationFilter<Container, Key> {
         ctx: &ParseContext,
         packet_data: PacketData<'j>,
     ) -> FResult<PacketData<'j>, Error> {
+        println!("FragmentationFilter: keep: start");
+        println!(
+            "FragmentationFilter: keep: ctx.pcap_index: {}",
+            ctx.pcap_index
+        );
         let key_option = match packet_data {
             PacketData::L2(data) => {
                 if data.len() < 14 {
@@ -172,6 +191,7 @@ impl<Container, Key> FragmentationFilter<Container, Key> {
                     return Err(Error::DataParser("L2 data too small for ethernet"));
                 }
 
+                println!("FragmentationFilter: keep: extract_callback_ethernet");
                 filter_utils::extract_callback_ethernet(
                     ctx,
                     self.get_key_from_ipv4_l3_data,
@@ -200,23 +220,35 @@ impl<Container, Key> FragmentationFilter<Container, Key> {
             PacketData::Unsupported(_) => unimplemented!(),
         };
 
+        println!("FragmentationFilter: keep: key_option: {:?}", key_option);
+
         match key_option {
             None => Ok(Verdict::Accept(packet_data)),
-            Some(key) => match (self.keep)(&self.key_container, &key) {
-                Ok(b) => {
-                    if b {
-                        Ok(Verdict::Accept(packet_data))
-                    } else {
-                        Ok(Verdict::Drop)
+            Some(key) => {
+                println!(
+                    "FragmentationFilter: keep: container: {:?}",
+                    self.key_container
+                );
+                println!(
+                    "FragmentationFilter: keep: in container: {:?}",
+                    (self.keep)(&self.key_container, &key)
+                );
+                match (self.keep)(&self.key_container, &key) {
+                    Ok(b) => {
+                        if b {
+                            Ok(Verdict::Accept(packet_data))
+                        } else {
+                            Ok(Verdict::Drop)
+                        }
                     }
+                    Err(s) => Err(s),
                 }
-                Err(s) => Err(s),
-            },
+            }
         }
     }
 }
 
-impl<Container, Key> Filter for FragmentationFilter<Container, Key> {
+impl<Container: Debug, Key: Debug> Filter for FragmentationFilter<Container, Key> {
     fn filter<'i>(&self, ctx: &ParseContext, i: PacketData<'i>) -> FResult<PacketData<'i>, Error> {
         self.keep(ctx, i)
     }
@@ -241,17 +273,107 @@ pub fn test_two_tuple_proto_ipid_five_tuple_option_in_container(
 ) -> Result<bool, Error> {
     let (two_tuple_proto_ipid_c, five_tuple_c) = container_tuple;
 
-    let in_0 = match two_tuple_proto_ipid_five_tuple.get_two_tuple_proto_ipid_option() {
-        Some(two_tuple_proto_ipid) => two_tuple_proto_ipid_c.contains(two_tuple_proto_ipid),
-        None => true,
-    };
+    // TODO: change to: if five_tuple is not option and in container, true,
+    // else check if two tuple proto ipid in container
+    let two_tuple_proto_ipid_present =
+        match two_tuple_proto_ipid_five_tuple.get_two_tuple_proto_ipid_option() {
+            Some(two_tuple_proto_ipid) => two_tuple_proto_ipid_c.contains(two_tuple_proto_ipid),
+            None => false,
+        };
 
-    let in_1 = match two_tuple_proto_ipid_five_tuple.get_five_tuple_option() {
+    let five_tuple_present = match two_tuple_proto_ipid_five_tuple.get_five_tuple_option() {
         Some(five_tuple) => five_tuple_c.contains(five_tuple),
-        None => true,
+        None => false,
     };
 
-    Ok(in_0 || in_1)
+    Ok(two_tuple_proto_ipid_present || five_tuple_present)
+}
+
+// pub fn check_key_container<KeyIp: Eq + Hash, KeyTransport: Eq + Hash, Container>(
+//     container_tuple: &(HashSet<KeyIp>, HashSet<KeyTransport>),
+//     // filtering_key: FilteringKey,
+//     key: &Key<KeyIp, KeyTransport>,
+// ) -> Result<bool, Error> {
+//     let (key_ip_c, key_transport_c) = container_tuple;
+
+//     // if filtering_key.uses_transport_field() {
+//     let key_ip = key.get_key_ip();
+//     // We check key_transport_option is parsable
+//     match key.get_key_transport_option() {
+//         Some(key_transport) => Ok(key_transport_c.contains(key_transport)),
+//         None => Ok(key_ip_c.contains(key_ip)),
+//     }
+//     // } else {
+//     //     // TODO: fix this unwrap()
+//     //     let key_transport = key.get_key_transport_option().unwrap();
+//     //     Ok(key_transport_c.contains(&key_transport))
+//     // }
+// }
+
+pub fn check_key_container<
+    'a,
+    'b,
+    KeyIp: Debug + Eq + Hash,
+    KeyTransport: Debug + Eq + Hash,
+    ContainerKeyIp,
+    ContainerKeyTransport,
+>(
+    check_container_key_ip: impl Fn(&'a ContainerKeyIp, &'b KeyIp) -> bool,
+    check_container_key_transport: impl Fn(&'a ContainerKeyTransport, &'b KeyTransport) -> bool,
+    container_key_ip: &'a ContainerKeyIp,
+    container_key_transport: &'a ContainerKeyTransport,
+    // filtering_key: FilteringKey,
+    key: &'b Key<KeyIp, KeyTransport>,
+) -> bool {
+    // let (key_ip_c, key_transport_c) = container_tuple;
+
+    // if filtering_key.uses_transport_field() {
+    let key_ip = key.get_key_ip();
+    println!(
+        "check_key_container: key_ip: {:?} ; check_container_key_ip() : {} ",
+        key_ip,
+        check_container_key_ip(container_key_ip, key_ip),
+    );
+
+    // We check key_transport_option is parsable
+    match key.get_key_transport_option() {
+        Some(key_transport) => {
+            println!(
+                "check_key_container: key_transport: {:?} ; check_container_key_transport() : {}",
+                key_transport,
+                check_container_key_transport(container_key_transport, key_transport)
+            );
+            check_container_key_transport(container_key_transport, key_transport)
+                && check_container_key_ip(container_key_ip, key_ip)
+        }
+        None => check_container_key_ip(container_key_ip, key_ip),
+    }
+    // } else {
+    //     // TODO: fix this unwrap()
+    //     let key_transport = key.get_key_transport_option().unwrap();
+    //     Ok(key_transport_c.contains(&key_transport))
+    // }
+}
+
+pub fn check_key_container_hs<KeyIp: Eq + Hash, KeyTransport: Eq + Hash>(
+    container_tuple: (&HashSet<KeyIp>, &HashSet<KeyTransport>),
+    // filtering_key: FilteringKey,
+    key: &Key<KeyIp, KeyTransport>,
+) -> bool {
+    let (key_ip_c, key_transport_c) = container_tuple;
+
+    // if filtering_key.uses_transport_field() {
+    let key_ip = key.get_key_ip();
+    // We check key_transport_option is parsable
+    match key.get_key_transport_option() {
+        Some(key_transport) => key_transport_c.contains(key_transport),
+        None => key_ip_c.contains(key_ip),
+    }
+    // } else {
+    //     // TODO: fix this unwrap()
+    //     let key_transport = key.get_key_transport_option().unwrap();
+    //     Ok(key_transport_c.contains(&key_transport))
+    // }
 }
 
 pub struct FragmentationFilterBuilder;
@@ -318,21 +440,45 @@ impl FragmentationFilterBuilder {
                 )))
             }
             FilteringKey::SrcIpaddrProtoDstPort => {
+                let ipaddr_proto_proto_ipid_c = IpAddrProtoIpidC::new(HashSet::new());
                 let ipaddr_proto_port_container = IpAddrProtoPortC::new(HashSet::new());
 
-                let keep: KeepFn<IpAddrProtoPortC, IpAddrProtoPort> = match filtering_action {
-                    FilteringAction::Keep => {
-                        |c: &IpAddrProtoPortC, ipaddr_proto_port| Ok(c.contains(ipaddr_proto_port))
-                    }
-                    FilteringAction::Drop => {
-                        |c, ipaddr_proto_port| Ok(!c.contains(ipaddr_proto_port))
-                    }
+                let keep: KeepFn<
+                    (IpAddrProtoIpidC, IpAddrProtoPortC),
+                    Key<IpAddrProtoIpid, IpAddrProtoPort>,
+                > = match filtering_action {
+                    FilteringAction::Keep => |c, key| {
+                        Ok(check_key_container(
+                            |container_key_ip: &IpAddrProtoIpidC, key_ip| {
+                                container_key_ip.contains(key_ip)
+                            },
+                            |container_key_transport: &IpAddrProtoPortC, key_transport| {
+                                container_key_transport.contains(key_transport)
+                            },
+                            &c.0,
+                            &c.1,
+                            key,
+                        ))
+                    },
+                    FilteringAction::Drop => |c, key| {
+                        Ok(!check_key_container(
+                            |container_key_ip: &IpAddrProtoIpidC, key_ip| {
+                                container_key_ip.contains(key_ip)
+                            },
+                            |container_key_transport: &IpAddrProtoPortC, key_transport| {
+                                container_key_transport.contains(key_transport)
+                            },
+                            &c.0,
+                            &c.1,
+                            key,
+                        ))
+                    },
                 };
 
                 Ok(Box::new(FragmentationFilter::new(
                     HashSet::new(),
-                    convert_fn::convert_data_hs_to_src_ipaddr_proto_dst_port_container,
-                    ipaddr_proto_port_container,
+                    convert_fn::convert_data_hs_to_ipaddr_proto_ipid_ipaddr_proto_port,
+                    (ipaddr_proto_proto_ipid_c, ipaddr_proto_port_container),
                     key_parser_ipv4::parse_src_ipaddr_proto_dst_port,
                     key_parser_ipv6::parse_src_ipaddr_proto_dst_port,
                     keep,
@@ -343,21 +489,83 @@ impl FragmentationFilterBuilder {
                     TwoTupleProtoIpidC::new(HashSet::new(), HashSet::new());
                 let five_tuple_container = FiveTupleC::new(HashSet::new(), HashSet::new());
 
-                let keep: KeepFn<(TwoTupleProtoIpidC, FiveTupleC), TwoTupleProtoIpidFiveTuple> =
-                    match filtering_action {
-                        FilteringAction::Keep => |c, two_tuple_proto_ipid_five_tuple| {
-                            test_two_tuple_proto_ipid_five_tuple_option_in_container(
-                                c,
-                                two_tuple_proto_ipid_five_tuple,
+                // let keep: KeepFn<(TwoTupleProtoIpidC, FiveTupleC), TwoTupleProtoIpidFiveTuple> =
+                //     match filtering_action {
+                //         FilteringAction::Keep => |c, two_tuple_proto_ipid_five_tuple| {
+                //             test_two_tuple_proto_ipid_five_tuple_option_in_container(
+                //                 c,
+                //                 two_tuple_proto_ipid_five_tuple,
+                //             )
+                //         },
+                //         FilteringAction::Drop => |c, two_tuple_proto_ipid_five_tuple| {
+                //             Ok(!(test_two_tuple_proto_ipid_five_tuple_option_in_container(
+                //                 c,
+                //                 two_tuple_proto_ipid_five_tuple,
+                //             )?))
+                //         },
+                //     };
+
+                let keep: KeepFn<
+                    (TwoTupleProtoIpidC, FiveTupleC),
+                    Key<TwoTupleProtoIpid, FiveTuple>,
+                > = match filtering_action {
+                    FilteringAction::Keep => |c, key| {
+                        println!(
+                            "keep: k: {:?} => {}",
+                            key,
+                            check_key_container(
+                                |container_key_ip: &TwoTupleProtoIpidC, key_ip| {
+                                    container_key_ip.contains(key_ip)
+                                },
+                                |container_key_transport: &FiveTupleC, key_transport| {
+                                    container_key_transport.contains(key_transport)
+                                },
+                                &c.0,
+                                &c.1,
+                                key,
                             )
-                        },
-                        FilteringAction::Drop => |c, two_tuple_proto_ipid_five_tuple| {
-                            Ok(!(test_two_tuple_proto_ipid_five_tuple_option_in_container(
-                                c,
-                                two_tuple_proto_ipid_five_tuple,
-                            )?))
-                        },
-                    };
+                        );
+                        Ok(check_key_container(
+                            |container_key_ip: &TwoTupleProtoIpidC, key_ip| {
+                                container_key_ip.contains(key_ip)
+                            },
+                            |container_key_transport: &FiveTupleC, key_transport| {
+                                container_key_transport.contains(key_transport)
+                            },
+                            &c.0,
+                            &c.1,
+                            key,
+                        ))
+                    },
+                    FilteringAction::Drop => |c, key| {
+                        println!(
+                            "keep: k: {:?} => {}",
+                            key,
+                            !check_key_container(
+                                |container_key_ip: &TwoTupleProtoIpidC, key_ip| {
+                                    container_key_ip.contains(key_ip)
+                                },
+                                |container_key_transport: &FiveTupleC, key_transport| {
+                                    container_key_transport.contains(key_transport)
+                                },
+                                &c.0,
+                                &c.1,
+                                key,
+                            )
+                        );
+                        Ok(!check_key_container(
+                            |container_key_ip: &TwoTupleProtoIpidC, key_ip| {
+                                container_key_ip.contains(key_ip)
+                            },
+                            |container_key_transport: &FiveTupleC, key_transport| {
+                                container_key_transport.contains(key_transport)
+                            },
+                            &c.0,
+                            &c.1,
+                            key,
+                        ))
+                    },
+                };
 
                 Ok(Box::new(FragmentationFilter::new(
                     HashSet::new(),

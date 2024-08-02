@@ -51,7 +51,8 @@ fn generic_test(
         .arg(&trace_output_file_path);
 
     let _output = cmd.output().unwrap();
-    // println!("Output: {:?}", _output);
+    let s = String::from_utf8(_output.stdout).unwrap();
+    println!("stdout: {}", s);
 
     let output_nb_packet = count_packet_in_trace(&trace_output_file_path);
 
@@ -161,7 +162,7 @@ fn test_ipv4_src_ipaddr_proto_dst_port_keep() {
         "output_fragmentation_filter_ipv4_src_ipaddr_proto_dst_port_keep",
         "sipdp",
         "k",
-        3,
+        2,
     )
 }
 
@@ -172,7 +173,7 @@ fn test_ipv4_src_ipaddr_proto_dst_port_drop() {
         "output_fragmentation_filter_ipv4_src_ipaddr_proto_dst_port_drop",
         "sipdp",
         "d",
-        2,
+        3,
     )
 }
 
@@ -183,7 +184,7 @@ fn test_ipv4_five_tuple_keep() {
         "output_fragmentation_filter_ipv4_five_tuple_keep",
         "sdipsdp",
         "k",
-        3,
+        2,
     )
 }
 
@@ -194,6 +195,6 @@ fn test_ipv4_five_tuple_drop() {
         "output_fragmentation_filter_ipv4_five_tuple_drop",
         "sdipsdp",
         "d",
-        2,
+        3,
     )
 }

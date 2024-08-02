@@ -10,12 +10,16 @@ use pnet_packet::PrimitiveValues;
 
 use crate::container::five_tuple_container::FiveTupleC;
 use crate::container::ipaddr_container::IpAddrC;
-use crate::container::ipaddr_proto_port_container::{IpAddrProtoPort, IpAddrProtoPortC};
+use crate::container::ipaddr_proto_ipid_container::IpAddrProtoIpid;
+use crate::container::ipaddr_proto_port_container::IpAddrProtoPort;
+use crate::container::ipaddr_proto_port_container::IpAddrProtoPortC;
 use crate::filters::filter::{FResult, Filter, Verdict};
 use crate::filters::filter_utils;
 use crate::filters::filtering_action::FilteringAction;
 use crate::filters::filtering_key::FilteringKey;
+use crate::filters::fragmentation::two_tuple_proto_ipid::TwoTupleProtoIpid;
 use crate::filters::ipaddr_pair::IpAddrPair;
+use crate::filters::key::Key;
 use crate::filters::key_parser_ipv4;
 use crate::filters::key_parser_ipv6;
 
@@ -163,9 +167,12 @@ impl DispatchFilterBuilder {
                     FilteringAction::Keep => Box::new(|c, ipaddr_pair| {
                         Ok(c.contains(&ipaddr_pair.0) || c.contains(&ipaddr_pair.1))
                     }),
-                    FilteringAction::Drop => Box::new(|c, ipaddr_pair| {
-                        Ok(!c.contains(&ipaddr_pair.0) && !c.contains(&ipaddr_pair.1))
-                    }),
+                    FilteringAction::Drop => {
+                        Box::new(|c, ipaddr_pair| {
+                            Ok(!c.contains(&ipaddr_pair.0)
+                                && !c.contains(&ipaddr_pair.1))
+                        })
+                    }
                 };
 
                 Ok(Box::new(DispatchFilter::new(
@@ -180,14 +187,15 @@ impl DispatchFilterBuilder {
                     IpAddrProtoPortC::of_file_path(Path::new(key_file_path))
                         .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
-                let keep: KeepFn<IpAddrProtoPortC, IpAddrProtoPort> = match filtering_action {
-                    FilteringAction::Keep => {
-                        Box::new(|c, ipaddr_proto_port| Ok(c.contains(ipaddr_proto_port)))
-                    }
-                    FilteringAction::Drop => {
-                        Box::new(|c, ipaddr_proto_port| Ok(!c.contains(ipaddr_proto_port)))
-                    }
-                };
+                let keep: KeepFn<IpAddrProtoPortC, Key<IpAddrProtoIpid, IpAddrProtoPort>> =
+                    match filtering_action {
+                        FilteringAction::Keep => Box::new(|c, key| {
+                            Ok(c.contains(key.get_key_transport_option().as_ref().unwrap()))
+                        }),
+                        FilteringAction::Drop => Box::new(|c, key| {
+                            Ok(!c.contains(key.get_key_transport_option().as_ref().unwrap()))
+                        }),
+                    };
 
                 Ok(Box::new(DispatchFilter::new(
                     ipaddr_proto_port_container,
@@ -200,15 +208,20 @@ impl DispatchFilterBuilder {
                 let five_tuple_container = FiveTupleC::of_file_path(Path::new(key_file_path))
                     .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
-                let keep: KeepFn<FiveTupleC, FiveTuple> = match filtering_action {
-                    FilteringAction::Keep => Box::new(|c, five_tuple| Ok(c.contains(five_tuple))),
-                    FilteringAction::Drop => Box::new(|c, five_tuple| Ok(!c.contains(five_tuple))),
-                };
+                let keep: KeepFn<FiveTupleC, Key<TwoTupleProtoIpid, FiveTuple>> =
+                    match filtering_action {
+                        FilteringAction::Keep => Box::new(|c, key| {
+                            Ok(c.contains(key.get_key_transport_option().as_ref().unwrap()))
+                        }),
+                        FilteringAction::Drop => Box::new(|c, key| {
+                            Ok(!c.contains(key.get_key_transport_option().as_ref().unwrap()))
+                        }),
+                    };
 
                 Ok(Box::new(DispatchFilter::new(
                     five_tuple_container,
-                    key_parser_ipv4::parse_five_tuple,
-                    key_parser_ipv6::parse_five_tuple,
+                    key_parser_ipv4::parse_two_tuple_proto_ipid_five_tuple,
+                    key_parser_ipv6::parse_two_tuple_proto_ipid_five_tuple,
                     keep,
                 )))
             }

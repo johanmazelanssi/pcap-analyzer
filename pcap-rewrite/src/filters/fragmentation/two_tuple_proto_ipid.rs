@@ -1,5 +1,6 @@
 use std::fmt;
 use std::net::{IpAddr, Ipv4Addr};
+use pnet_packet::ip::IpNextHeaderProtocol;
 
 /// Network 2-tuple (src/dst IP address) + IP protocol + IP ID
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
@@ -46,13 +47,13 @@ impl TwoTupleProtoIpid {
     }
 }
 
-impl Default for TwoTupleProtoIpid {
-    fn default() -> Self {
-        TwoTupleProtoIpid {
-            proto: 0,
-            src: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
-            dst: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
-            ip_id: 0,
-        }
-    }
-}
+// impl Default for TwoTupleProtoIpid {
+//     fn default() -> Self {
+//         TwoTupleProtoIpid {
+//             proto: 0,
+//             src: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+//             dst: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+//             ip_id: 0,
+//         }
+//     }
+// }
