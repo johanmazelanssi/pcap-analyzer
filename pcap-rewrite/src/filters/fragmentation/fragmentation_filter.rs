@@ -179,11 +179,11 @@ impl<Container: Debug, Key: Debug> FragmentationFilter<Container, Key> {
         ctx: &ParseContext,
         packet_data: PacketData<'j>,
     ) -> FResult<PacketData<'j>, Error> {
-        println!("FragmentationFilter: keep: start");
-        println!(
-            "FragmentationFilter: keep: ctx.pcap_index: {}",
-            ctx.pcap_index
-        );
+        // println!("FragmentationFilter: keep: start");
+        // println!(
+        //     "FragmentationFilter: keep: ctx.pcap_index: {}",
+        //     ctx.pcap_index
+        // );
         let key_option = match packet_data {
             PacketData::L2(data) => {
                 if data.len() < 14 {
@@ -191,7 +191,7 @@ impl<Container: Debug, Key: Debug> FragmentationFilter<Container, Key> {
                     return Err(Error::DataParser("L2 data too small for ethernet"));
                 }
 
-                println!("FragmentationFilter: keep: extract_callback_ethernet");
+                // println!("FragmentationFilter: keep: extract_callback_ethernet");
                 filter_utils::extract_callback_ethernet(
                     ctx,
                     self.get_key_from_ipv4_l3_data,
@@ -220,19 +220,19 @@ impl<Container: Debug, Key: Debug> FragmentationFilter<Container, Key> {
             PacketData::Unsupported(_) => unimplemented!(),
         };
 
-        println!("FragmentationFilter: keep: key_option: {:?}", key_option);
+        // println!("FragmentationFilter: keep: key_option: {:?}", key_option);
 
         match key_option {
             None => Ok(Verdict::Accept(packet_data)),
             Some(key) => {
-                println!(
-                    "FragmentationFilter: keep: container: {:?}",
-                    self.key_container
-                );
-                println!(
-                    "FragmentationFilter: keep: in container: {:?}",
-                    (self.keep)(&self.key_container, &key)
-                );
+                // println!(
+                //     "FragmentationFilter: keep: container: {:?}",
+                //     self.key_container
+                // );
+                // println!(
+                //     "FragmentationFilter: keep: in container: {:?}",
+                //     (self.keep)(&self.key_container, &key)
+                // );
                 match (self.keep)(&self.key_container, &key) {
                     Ok(b) => {
                         if b {
@@ -329,20 +329,20 @@ pub fn check_key_container<
 
     // if filtering_key.uses_transport_field() {
     let key_ip = key.get_key_ip();
-    println!(
-        "check_key_container: key_ip: {:?} ; check_container_key_ip() : {} ",
-        key_ip,
-        check_container_key_ip(container_key_ip, key_ip),
-    );
+    // println!(
+    //     "check_key_container: key_ip: {:?} ; check_container_key_ip() : {} ",
+    //     key_ip,
+    //     check_container_key_ip(container_key_ip, key_ip),
+    // );
 
     // We check key_transport_option is parsable
     match key.get_key_transport_option() {
         Some(key_transport) => {
-            println!(
-                "check_key_container: key_transport: {:?} ; check_container_key_transport() : {}",
-                key_transport,
-                check_container_key_transport(container_key_transport, key_transport)
-            );
+            // println!(
+            //     "check_key_container: key_transport: {:?} ; check_container_key_transport() : {}",
+            //     key_transport,
+            //     check_container_key_transport(container_key_transport, key_transport)
+            // );
             check_container_key_transport(container_key_transport, key_transport)
                 && check_container_key_ip(container_key_ip, key_ip)
         }
@@ -510,21 +510,21 @@ impl FragmentationFilterBuilder {
                     KeyIpTransport<TwoTupleProtoIpid, FiveTuple>,
                 > = match filtering_action {
                     FilteringAction::Keep => |c, key| {
-                        println!(
-                            "keep: k: {:?} => {}",
-                            key,
-                            check_key_container(
-                                |container_key_ip: &TwoTupleProtoIpidC, key_ip| {
-                                    container_key_ip.contains(key_ip)
-                                },
-                                |container_key_transport: &FiveTupleC, key_transport| {
-                                    container_key_transport.contains(key_transport)
-                                },
-                                &c.0,
-                                &c.1,
-                                key,
-                            )
-                        );
+                        // println!(
+                        //     "keep: k: {:?} => {}",
+                        //     key,
+                        //     check_key_container(
+                        //         |container_key_ip: &TwoTupleProtoIpidC, key_ip| {
+                        //             container_key_ip.contains(key_ip)
+                        //         },
+                        //         |container_key_transport: &FiveTupleC, key_transport| {
+                        //             container_key_transport.contains(key_transport)
+                        //         },
+                        //         &c.0,
+                        //         &c.1,
+                        //         key,
+                        //     )
+                        // );
                         Ok(check_key_container(
                             |container_key_ip: &TwoTupleProtoIpidC, key_ip| {
                                 container_key_ip.contains(key_ip)
@@ -538,21 +538,21 @@ impl FragmentationFilterBuilder {
                         ))
                     },
                     FilteringAction::Drop => |c, key| {
-                        println!(
-                            "keep: k: {:?} => {}",
-                            key,
-                            !check_key_container(
-                                |container_key_ip: &TwoTupleProtoIpidC, key_ip| {
-                                    container_key_ip.contains(key_ip)
-                                },
-                                |container_key_transport: &FiveTupleC, key_transport| {
-                                    container_key_transport.contains(key_transport)
-                                },
-                                &c.0,
-                                &c.1,
-                                key,
-                            )
-                        );
+                        // println!(
+                        //     "keep: k: {:?} => {}",
+                        //     key,
+                        //     !check_key_container(
+                        //         |container_key_ip: &TwoTupleProtoIpidC, key_ip| {
+                        //             container_key_ip.contains(key_ip)
+                        //         },
+                        //         |container_key_transport: &FiveTupleC, key_transport| {
+                        //             container_key_transport.contains(key_transport)
+                        //         },
+                        //         &c.0,
+                        //         &c.1,
+                        //         key,
+                        //     )
+                        // );
                         Ok(!check_key_container(
                             |container_key_ip: &TwoTupleProtoIpidC, key_ip| {
                                 container_key_ip.contains(key_ip)
