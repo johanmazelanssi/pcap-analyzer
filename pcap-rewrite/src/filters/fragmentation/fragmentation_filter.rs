@@ -2,18 +2,16 @@ use std::collections::HashSet;
 use std::io;
 use std::net::IpAddr;
 
+use log::info;
 use log::warn;
 use pcap_parser::data::PacketData;
 use pnet_packet::ethernet::{EtherType, EtherTypes};
-use tracing::info;
 
-use libpcap_tools::FiveTuple;
 use libpcap_tools::{Error, Packet, ParseContext};
 
 use super::convert_fn;
 use crate::container::five_tuple_container::FiveTupleC;
 use crate::container::ipaddr_container::IpAddrC;
-use crate::container::ipaddr_proto_port_container::IpAddrProtoPort;
 use crate::container::ipaddr_proto_port_container::IpAddrProtoPortC;
 use crate::container::two_tuple_proto_ipid_container::TwoTupleProtoIpidC;
 use crate::filters::filter::Filter;
