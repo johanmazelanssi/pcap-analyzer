@@ -42,6 +42,7 @@ pnet_packet = "0.35"
 tracing = { version="0.1", features=["log"] }
 tracing-subscriber = { version="0.3", features=["env-filter","fmt","json"] }
 xz2 = "0.1"
+zstd = "0.13.2"
 
 [dependencies.pcap-parser]
 version = "0.16"

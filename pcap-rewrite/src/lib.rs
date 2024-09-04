@@ -167,6 +167,13 @@ fn get_reader(input_filename: &str) -> io::Result<Box<dyn Read>> {
                 };
                 Ok(Box::new(lz4::Decoder::new(file)?))
             }
+            // NB: this does not work on some valid zstd archives.
+            "application/zst" => {
+                if !input_filename.ends_with(".zst") {
+                    warn!("Inferred file type is Zstd but file extension is not zst")
+                };
+                Ok(Box::new(zstd::stream::read::Decoder::new(file)?))
+            }
             "custom/pcap" => Ok(Box::new(file) as Box<dyn io::Read>),
             _ => {
                 warn!("Could not infer file type '{}'", input_filename);
@@ -176,6 +183,8 @@ fn get_reader(input_filename: &str) -> io::Result<Box<dyn Read>> {
                     Ok(Box::new(XzDecoder::new(file)))
                 } else if input_filename.ends_with(".lz4") {
                     Ok(Box::new(lz4::Decoder::new(file)?))
+                } else if input_filename.ends_with(".zst") {
+                    Ok(Box::new(zstd::stream::read::Decoder::new(file)?))
                 } else {
                     Ok(Box::new(file) as Box<dyn io::Read>)
                 }
