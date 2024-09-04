@@ -5,9 +5,10 @@ use std::net::IpAddr;
 use log::warn;
 use pcap_parser::data::PacketData;
 use pnet_packet::ethernet::{EtherType, EtherTypes};
+use tracing::info;
 
-use libpcap_tools::{Error, Packet, ParseContext};
 use libpcap_tools::FiveTuple;
+use libpcap_tools::{Error, Packet, ParseContext};
 
 use super::convert_fn;
 use crate::container::five_tuple_container::FiveTupleC;
@@ -255,25 +256,6 @@ pub fn test_key_fragmentation_transport_in_container<Container, Key>(
     Ok(in_0 || in_1)
 }
 
-pub fn test_key_fragmentation_transport_in_container_five_tuple(
-    container_tuple: &(TwoTupleProtoIpidC, FiveTupleC),
-    key_fragmentation_matching: &KeyFragmentationMatching<FiveTuple>,
-) -> Result<bool, Error> {
-    let (two_tuple_proto_ipid_c, five_tuple_c) = container_tuple;
-
-    let in_0 = match key_fragmentation_matching.get_two_tuple_proto_ipid_option() {
-        Some(two_tuple_proto_ipid) => two_tuple_proto_ipid_c.contains(two_tuple_proto_ipid),
-        None => false,
-    };
-
-    let in_1 = match key_fragmentation_matching.get_five_tuple_option() {
-        Some(five_tuple) => five_tuple_c.contains(five_tuple),
-        None => false,
-    };
-
-    Ok(in_0 || in_1)
-}
-
 pub struct FragmentationFilterBuilder;
 
 impl FragmentationFilterBuilder {
@@ -338,23 +320,35 @@ impl FragmentationFilterBuilder {
                 )))
             }
             FilteringKey::SrcIpaddrProtoDstPort => {
+                let two_tuple_proto_proto_ipid_c = TwoTupleProtoIpidC::new(HashSet::new());
                 let ipaddr_proto_port_container = IpAddrProtoPortC::new(HashSet::new());
 
-                let keep: KeepFn<IpAddrProtoPortC, IpAddrProtoPort> = match filtering_action {
-                    FilteringAction::Keep => {
-                        |c: &IpAddrProtoPortC, ipaddr_proto_port| Ok(c.contains(ipaddr_proto_port))
-                    }
-                    FilteringAction::Drop => {
-                        |c, ipaddr_proto_port| Ok(!c.contains(ipaddr_proto_port))
-                    }
+                let keep: KeepFn<
+                    (TwoTupleProtoIpidC, IpAddrProtoPortC),
+                    KeyFragmentationMatching<_>,
+                > = match filtering_action {
+                    FilteringAction::Keep => |c, key_fragmentation_matching| {
+                        test_key_fragmentation_transport_in_container(
+                            |c, ipaddr_proto_port| c.contains(ipaddr_proto_port),
+                            c,
+                            key_fragmentation_matching,
+                        )
+                    },
+                    FilteringAction::Drop => |c, key_fragmentation_matching| {
+                        Ok(!(test_key_fragmentation_transport_in_container(
+                            |c, ipaddr_proto_port| c.contains(ipaddr_proto_port),
+                            c,
+                            key_fragmentation_matching,
+                        )?))
+                    },
                 };
 
                 Ok(Box::new(FragmentationFilter::new(
                     HashSet::new(),
-                    convert_fn::convert_data_hs_to_src_ipaddr_proto_dst_port_container,
-                    ipaddr_proto_port_container,
-                    key_parser_ipv4::parse_src_ipaddr_proto_dst_port,
-                    key_parser_ipv6::parse_src_ipaddr_proto_dst_port,
+                    convert_fn::convert_data_hs_to_two_tuple_proto_ipid_c_src_ipaddr_proto_dst_port_container,
+                    (two_tuple_proto_proto_ipid_c, ipaddr_proto_port_container),
+                    key_parser_ipv4::parse_key_fragmentation_transport_src_ipaddr_proto_dst_port,
+                    key_parser_ipv6::parse_key_fragmentation_transport_src_ipaddr_proto_dst_port,
                     keep,
                 )))
             }
@@ -365,6 +359,19 @@ impl FragmentationFilterBuilder {
                 let keep: KeepFn<(TwoTupleProtoIpidC, FiveTupleC), KeyFragmentationMatching<_>> =
                     match filtering_action {
                         FilteringAction::Keep => |c, key_fragmentation_matching| {
+                            info!("c: {:?}", c);
+                            info!(
+                                "key_fragmentation_matching: {:?}",
+                                key_fragmentation_matching
+                            );
+                            info!(
+                                "bool: {:?}",
+                                test_key_fragmentation_transport_in_container(
+                                    |five_tuple_c, five_tuple| five_tuple_c.contains(five_tuple),
+                                    c,
+                                    key_fragmentation_matching,
+                                )
+                            );
                             test_key_fragmentation_transport_in_container(
                                 |five_tuple_c, five_tuple| five_tuple_c.contains(five_tuple),
                                 c,

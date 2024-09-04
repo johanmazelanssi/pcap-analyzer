@@ -53,7 +53,7 @@ pub fn parse_src_dst_ipaddr(ctx: &ParseContext, payload: &[u8]) -> Result<IpAddr
 pub fn parse_src_ipaddr_proto_dst_port(
     ctx: &ParseContext,
     payload: &[u8],
-) -> Result<IpAddrProtoPort, Error> {
+) -> Result<Option<IpAddrProtoPort>, Error> {
     let ipv6_packet = Ipv6Packet::new(payload).ok_or_else(|| {
         warn!(
             "Expected Ipv6 packet but could not parse at index {}",
@@ -77,11 +77,11 @@ pub fn parse_src_ipaddr_proto_dst_port(
                 match TcpPacket::new(payload) {
                     Some(ref tcp) => {
                         let dst_port = tcp.get_destination();
-                        Ok(IpAddrProtoPort::new(
+                        Ok(Some(IpAddrProtoPort::new(
                             src_ipaddr,
                             IpNextHeaderProtocols::Tcp,
                             dst_port,
-                        ))
+                        )))
                     }
                     None => {
                         warn!(
@@ -94,11 +94,7 @@ pub fn parse_src_ipaddr_proto_dst_port(
                     }
                 }
             } else {
-                Ok(IpAddrProtoPort::new(
-                    src_ipaddr,
-                    IpNextHeaderProtocols::Tcp,
-                    0,
-                ))
+                Ok(None)
             }
         }
         IpNextHeaderProtocols::Udp => {
@@ -110,11 +106,11 @@ pub fn parse_src_ipaddr_proto_dst_port(
                 match UdpPacket::new(payload) {
                     Some(ref udp) => {
                         let dst_port = udp.get_destination();
-                        Ok(IpAddrProtoPort::new(
+                        Ok(Some(IpAddrProtoPort::new(
                             src_ipaddr,
                             IpNextHeaderProtocols::Udp,
                             dst_port,
-                        ))
+                        )))
                     }
                     None => {
                         warn!(
@@ -127,14 +123,10 @@ pub fn parse_src_ipaddr_proto_dst_port(
                     }
                 }
             } else {
-                Ok(IpAddrProtoPort::new(
-                    src_ipaddr,
-                    IpNextHeaderProtocols::Udp,
-                    0,
-                ))
+                Ok(None)
             }
         }
-        _ => Ok(IpAddrProtoPort::new(src_ipaddr, l4_proto, 0)),
+        _ => Ok(Some(IpAddrProtoPort::new(src_ipaddr, l4_proto, 0))),
     }
 }
 
@@ -301,6 +293,13 @@ pub fn parse_key_fragmentation_transport<Key>(
             ))
         }
     }
+}
+
+pub fn parse_key_fragmentation_transport_src_ipaddr_proto_dst_port(
+    ctx: &ParseContext,
+    payload: &[u8],
+) -> Result<KeyFragmentationMatching<IpAddrProtoPort>, Error> {
+    parse_key_fragmentation_transport(parse_src_ipaddr_proto_dst_port, ctx, payload)
 }
 
 pub fn parse_key_fragmentation_transport_five_tuple(

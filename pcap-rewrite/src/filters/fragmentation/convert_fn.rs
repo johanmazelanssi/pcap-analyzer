@@ -44,9 +44,18 @@ pub fn convert_data_hs_to_src_dst_ipaddrc(
     IpAddrC::new(src_dst_ipaddr_hs)
 }
 
-pub fn convert_data_hs_to_src_ipaddr_proto_dst_port_container(
+pub fn convert_data_hs_to_two_tuple_proto_ipid_c_src_ipaddr_proto_dst_port_container(
     data_hs: &HashSet<TwoTupleProtoIpidFiveTuple>,
-) -> IpAddrProtoPortC {
+) -> (TwoTupleProtoIpidC, IpAddrProtoPortC) {
+    let two_tuple_proto_ipid_hs: HashSet<_> = data_hs
+        .iter()
+        .filter_map(|two_tuple_proto_ipid_five_tuple| {
+            two_tuple_proto_ipid_five_tuple.get_two_tuple_proto_ipid_option()
+        })
+        .cloned()
+        .collect();
+    let two_tuple_proto_ipid_container = TwoTupleProtoIpidC::new(two_tuple_proto_ipid_hs);
+
     let src_ipaddr_proto_dst_port_iter = data_hs
         .iter()
         .filter_map(|t| t.get_five_tuple_option())
@@ -69,7 +78,11 @@ pub fn convert_data_hs_to_src_ipaddr_proto_dst_port_container(
         });
     let ipaddr_proto_port_hs =
         HashSet::from_iter(src_ipaddr_proto_dst_port_iter.chain(dst_ipaddr_proto_src_port_iter));
-    IpAddrProtoPortC::new(ipaddr_proto_port_hs)
+
+    (
+        two_tuple_proto_ipid_container,
+        IpAddrProtoPortC::new(ipaddr_proto_port_hs),
+    )
 }
 
 pub fn convert_data_hs_to_two_tuple_proto_ipid_c_five_tuple_c(
@@ -82,8 +95,7 @@ pub fn convert_data_hs_to_two_tuple_proto_ipid_c_five_tuple_c(
         })
         .cloned()
         .collect();
-    let two_tuple_proto_ipid_container =
-        TwoTupleProtoIpidC::new(two_tuple_proto_ipid_hs);
+    let two_tuple_proto_ipid_container = TwoTupleProtoIpidC::new(two_tuple_proto_ipid_hs);
 
     let five_tuple_hs: HashSet<FiveTuple> = data_hs
         .iter()
