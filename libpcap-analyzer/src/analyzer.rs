@@ -296,8 +296,6 @@ fn handle_l3_ipv4(
         }
     };
 
-    let payload = extract_payload_l3_ipv4(ctx, &ipv4)?;
-
     let l4_proto = ipv4.get_next_level_protocol().0;
     let t3 = ThreeTuple {
         src: IpAddr::V4(ipv4.get_source()),
@@ -311,6 +309,23 @@ fn handle_l3_ipv4(
             warn!("IPv4: invalid checksum");
         }
     }
+
+    // if get_total_length is 0, assume TSO offloading and no padding
+    let payload = if ip_len == 0 {
+        trace!(
+            "IPv4: packet reported length is 0. Assuming TSO (idx={})",
+            ctx.pcap_index
+        );
+        // the payload() function from pnet will fail
+        let start = ipv4.get_header_length() as usize * 4;
+        if start > data.len() {
+            trace!("IPv4: ip_len == 0 and ipv4.get_header_length is invalid!");
+            return Ok(());
+        }
+        &data[start..]
+    } else {
+        ipv4.payload()
+    };
 
     // check IP fragmentation before calling handle_l4
     let frag_offset = (ipv4.get_fragment_offset() * 8) as usize;
